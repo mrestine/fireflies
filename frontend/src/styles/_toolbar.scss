@@ -1,0 +1,35 @@
+@use 'variables' as *;
+
+#toolbar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: $toolbar-bg;
+  backdrop-filter: blur($toolbar-blur);
+  padding: 8px 12px;
+  border-radius: $toolbar-radius;
+}
+
+.color-btn {
+  width: $color-btn-size;
+  height: $color-btn-size;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s;
+
+  &:hover,
+  &.active {
+    transform: scale(1.2);
+    border-color: white;
+  }
+}
+
+#width-slider {
+  width: 80px;
+  accent-color: white;
+}

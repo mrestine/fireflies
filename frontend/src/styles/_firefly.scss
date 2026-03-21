@@ -1,0 +1,79 @@
+#main {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+@mixin fly-gradient($core, $glow) {
+  background: radial-gradient(
+    circle,
+    $core 0%,
+    $core 15%,
+    // solid core
+    $glow 15%,
+    // hard edge where glow begins
+    transparent 70%
+  );
+}
+
+.firefly {
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  @include fly-gradient(#888, rgba(136, 136, 136, 0.3));
+  mix-blend-mode: screen;
+  opacity: 0;
+  will-change: transform;
+  // transform duration slightly longer than TICK_MS in fireflyControl
+  // this allows headroom for calculations and such
+  transition:
+    opacity 2s,
+    transform 175ms linear;
+
+  // ::before = bright (lower z-order, yields to triggered)
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 1s;
+  }
+
+  // bright-out keeps the gradient alive while opacity transitions to 0
+  &.bright::before,
+  &.bright-out::before {
+    @include fly-gradient(#bbb, rgba(187, 187, 187, 0.3));
+  }
+
+  &.bright::before {
+    opacity: 1;
+  }
+
+  // ::after = triggered (upper z-order, always wins over bright)
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 400ms;
+  }
+
+  // triggered-out keeps the gradient alive while opacity transitions to 0
+  &.triggered::after,
+  &.triggered-out::after {
+    // --trigger-color and --trigger-intensity are set per-fly in JS
+    background: radial-gradient(
+      circle,
+      var(--trigger-color, red) 0%,
+      var(--trigger-color, red) 15%,
+      color-mix(in srgb, var(--trigger-color, red) 30%, transparent) 15%,
+      transparent 70%
+    );
+  }
+
+  &.triggered::after {
+    opacity: var(--trigger-intensity, 1);
+  }
+}
