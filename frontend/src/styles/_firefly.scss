@@ -51,29 +51,29 @@
     opacity: 1;
   }
 
-  // ::after = triggered (upper z-order, always wins over bright)
-  &::after {
-    content: '';
+  // .trigger-layer divs are injected per-click so each ripple has an independent
+  // lifetime and color. screen blend lets overlapping colors combine naturally.
+  .trigger-layer {
     position: absolute;
     inset: 0;
-    opacity: 0;
-    transition: opacity 400ms;
-  }
-
-  // triggered-out keeps the gradient alive while opacity transitions to 0
-  &.triggered::after,
-  &.triggered-out::after {
-    // --trigger-color and --trigger-intensity are set per-fly in JS
     background: radial-gradient(
       circle,
-      var(--trigger-color, red) 0%,
-      var(--trigger-color, red) 15%,
-      color-mix(in srgb, var(--trigger-color, red) 30%, transparent) 15%,
+      var(--trigger-color) 0%,
+      var(--trigger-color) 15%,
+      color-mix(in srgb, var(--trigger-color) 30%, transparent) 15%,
       transparent 70%
     );
-  }
+    mix-blend-mode: plus-lighter;
+    opacity: 0;
+    transition: opacity 100ms;
 
-  &.triggered::after {
-    opacity: var(--trigger-intensity, 1);
+    &.visible {
+      opacity: var(--trigger-intensity, 1);
+    }
+
+    &.fading {
+      opacity: 0;
+      transition: opacity 800ms;
+    }
   }
 }

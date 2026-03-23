@@ -1,72 +1,101 @@
 import { Firefly } from './firefly';
 import { ClickEvent } from './types';
 
+// Used for fading in/out a fly
 const FADE_MS = 2000;
-const FLICKER_MS = 500;
-
-// Tick interval for the movement loop. The CSS transition on top/left must match
-// so the browser interpolates positions smoothly between ticks.
+// Tick interval for the movement loop. The css transition on transform must match
+// with computational headroom so the browser interpolates positions smoothly between ticks.
 const TICK_MS = 150;
+// How far the click event will trigger flies. 1.0 is the whole screen
 const RIPPLE_RADIUS = 0.6;
+const MAX_RIPPLE_DELAY = 1600;
 
 interface ControlProps {
   targetCount: number;
   container: HTMLDivElement;
 }
 
+interface FlyWithDistance {
+  fly: Firefly;
+  distance: number;
+}
+
+/**
+ * Responsible for just about everything that isn't fly-specific:
+ * Spawning, despawning, flickering, trigger handling, OOB checks, ticking movement
+ */
 export class FireflyControl {
-  fireflies: Firefly[] = [];
+  private fireflies: Firefly[] = [];
   private targetCount: number = 0;
   private container: HTMLDivElement | null = null;
   private fading = new Set<Firefly>();
-  private cursor = 0;
+  private oobCursor = 0;
 
   constructor({ targetCount, container }: ControlProps) {
     this.targetCount = targetCount;
     this.container = container;
   }
 
-  start() {
-    setInterval(() => this.mainLoop(), TICK_MS);
-    setInterval(() => this.flickerRandomFly(), FLICKER_MS);
+  /**
+   * Spawns the initial flies
+   * starts the main loop interval to tick fly movement
+   * starts the random flicker handler (has its own random delay)
+   * starts the random spawn handler (has its own random delay)
+   */
+  start(): void {
     const initalFlyAdding = setInterval(() => {
       if (this.fireflies.length >= this.targetCount) {
         clearInterval(initalFlyAdding);
-        this.schedule();
       }
       this.addFly();
     }, 50);
+    setInterval(() => this.mainLoop(), TICK_MS);
+    this.randomFlickerHandler();
+    this.randomSpawnHandler();
   }
 
-  private mainLoop() {
+  /**
+   * Ticks movement of the flies every TICK_MS
+   * movement is animated by css with an anim duration a little higher than TICK_MS
+   * Also does an OOB check on some flies
+   *
+   * Not relying on requestAnimationFrame() here gives more control over fly speeds
+   */
+  private mainLoop(): void {
     this.fireflies.forEach((f) => f.tickMovement());
     this.removeOutOfBounds();
   }
 
-  private schedule(): void {
-    const delay = 100 + Math.random() * 2400;
-    setTimeout(() => {
-      this.addOrRemove();
-      this.schedule();
-    }, delay);
-  }
-
-  private addOrRemove(): void {
+  /**
+   * This will randomly spawn or despawn a fly
+   * It will be more likely to spawn one if fly count < target count
+   * Random delay to next random spawn handler call
+   */
+  private randomSpawnHandler(): void {
     const activeCount = this.fireflies.length - this.fading.size;
     const diff = this.targetCount - activeCount;
     // Math.tanh maps diff smoothly to (-1, 1):
-    //   diff=0  → pAdd=0.5 (coin flip)
-    //   diff=2  → pAdd≈0.96 (strongly add)
-    //   diff=-2 → pAdd≈0.04 (strongly remove)
-    const pAdd = (1 + Math.tanh(diff)) / 2;
+    //   diff=0  -> pAdd=0.5 (coin flip)
+    //   diff=2  -> pAdd≈0.96 (strongly add)
+    //   diff=-2 -> pAdd≈0.04 (strongly remove)
+    const probabilityToAdd = (1 + Math.tanh(diff)) / 2;
 
-    if (Math.random() < pAdd) {
+    if (Math.random() < probabilityToAdd) {
       this.addFly();
     } else {
       this.removeRandomFly();
     }
+
+    const delay = 100 + Math.random() * 2400;
+    setTimeout(() => {
+      this.randomSpawnHandler();
+    }, delay);
   }
 
+  /**
+   * Adds a new fly by pushing it to this.fireflies,
+   * appending it to the container, and fading it in
+   */
   private addFly(): void {
     if (!this.container) {
       return;
@@ -74,8 +103,7 @@ export class FireflyControl {
     const fly = new Firefly();
     this.container.appendChild(fly.element);
     this.fireflies.push(fly);
-    // Double-rAF: first frame lets the browser paint opacity:0,
-    // second frame sets opacity:1 so the CSS transition has a committed start point
+    // nested rAF: first frame allows new el with opacity 0, then fade to opacity 1
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         fly.element.style.opacity = '1';
@@ -84,17 +112,26 @@ export class FireflyControl {
   }
 
   /**
-   * picks a fly to fade out and remove that isn't already fading
+   * Will pick a random fly that isn't currently fading to toggle the flicker effect
+   * (flicker is just a slight increase in brightness)
    */
-  private flickerRandomFly(): void {
+  private randomFlickerHandler(): void {
     const candidates = this.fireflies.filter((f) => !this.fading.has(f));
     if (candidates.length === 0) {
       return;
     }
     const fly = candidates[Math.floor(Math.random() * candidates.length)];
     fly.flicker();
+
+    const delay = 100 + Math.random() * 2400;
+    setTimeout(() => {
+      this.randomFlickerHandler();
+    }, delay);
   }
 
+  /**
+   * Picks a fly to fade out and remove that isn't already fading
+   */
   private removeRandomFly(): void {
     const candidates = this.fireflies.filter((f) => !this.fading.has(f));
     if (candidates.length === 0) {
@@ -104,6 +141,10 @@ export class FireflyControl {
     this.fadeOut(fly);
   }
 
+  /**
+   * Handles fly despawning, be it by random despawn or oob
+   * Adds to this.fading, applies opacity, removes el and this.fading entry after timer.
+   */
   private fadeOut(fly: Firefly): void {
     this.fading.add(fly);
     fly.element.style.opacity = '0';
@@ -115,16 +156,19 @@ export class FireflyControl {
   }
 
   /**
-   * Checks 10 flies per frame using a rolling cursor, so the cost is O(10) regardless
-   * of swarm size. fadeOut() removes via filter (new array) after FADE_MS — safe to do
+   * Removes flies that have gone too far outside the viewport.
+   * Checks 10 flies per frame using a rolling cursor. checks don't need to be aggressive
+   * No mutation worries because fadeOut makes a new array with .filter()
    * async because the cursor reads this.fireflies.length fresh each call.
    */
   removeOutOfBounds(): void {
     const total = this.fireflies.length;
-    if (total === 0) return;
+    if (total === 0) {
+      return;
+    }
 
-    const end = Math.min(this.cursor + 10, total);
-    for (let i = this.cursor; i < end; i++) {
+    const end = Math.min(this.oobCursor + 10, total);
+    for (let i = this.oobCursor; i < end; i++) {
       const fly = this.fireflies[i];
       if (
         fly.positionX > 1.1 ||
@@ -133,60 +177,54 @@ export class FireflyControl {
         fly.positionY < -0.1
       ) {
         if (!this.fading.has(fly)) {
-          console.log('### removing oob', this.fireflies.length);
           this.fadeOut(fly);
         }
       }
     }
 
-    this.cursor = end >= total ? 0 : end;
+    this.oobCursor = end >= total ? 0 : end;
   }
 
-  private getFliesNearEvent({
-    x,
-    y,
-  }: ClickEvent): Array<{ fly: Firefly; dist: number }> {
-    const result: Array<{ fly: Firefly; dist: number }> = [];
-    // Scale the X delta by the aspect ratio so both axes are in the same unit
-    // (normalized viewport height). Without this, 0.1 units in X covers less
-    // screen distance than 0.1 units in Y on a wide viewport, producing an ellipse.
-    const ar = window.innerWidth / window.innerHeight;
+  /**
+   * Gets all flies within a radius of a click event.
+   * The distance is normalized by the screen's aspect ratio, so it always appears as a circle.
+   * @param param0 x and y of the click event
+   * @returns an array of flies and their distance from the event
+   */
+  private getFliesNearEvent({ x, y }: ClickEvent): Array<FlyWithDistance> {
+    const result: Array<FlyWithDistance> = [];
+    const aspectRatio = window.innerWidth / window.innerHeight;
     this.fireflies.forEach((fly) => {
-      const dist = Math.hypot((fly.positionX - x) * ar, fly.positionY - y);
-      if (dist < RIPPLE_RADIUS) {
-        result.push({ fly, dist });
+      const distance = Math.hypot(
+        (fly.positionX - x) * aspectRatio,
+        fly.positionY - y,
+      );
+      if (distance < RIPPLE_RADIUS) {
+        result.push({ fly, distance });
       }
     });
     return result;
   }
 
+  /**
+   * Applies the triggered status to all flies in the click radius.
+   * The effect will be more delayed and less intense as it radiates out.
+   * @param clickEvent
+   */
   triggerClick(clickEvent: ClickEvent): void {
-    console.log('### got click', clickEvent);
     const flies = this.getFliesNearEvent(clickEvent);
-    const RADIUS = RIPPLE_RADIUS;
-    const MAX_RIPPLE_DELAY = 1600;
 
-    flies.forEach(({ fly, dist }) => {
+    flies.forEach(({ fly, distance }) => {
       // 0 at center, 1 at edge
-      const t = dist / RADIUS;
+      const t = distance / RIPPLE_RADIUS;
       const delay = t * MAX_RIPPLE_DELAY;
-      // closest flies get full intensity, edge flies barely change
-      const intensity = 1 - t;
+      // capped at 0.70 so two overlapping triggers add to ~1.1 without washing to white
+      const intensity = (1 - t) * 0.7;
 
+      // timer to remove the triggered state
       setTimeout(() => {
-        fly.element.style.setProperty('--trigger-color', clickEvent.color);
-        fly.element.style.setProperty('--trigger-intensity', intensity.toFixed(2));
-        fly.element.classList.add('triggered');
-        setTimeout(() => {
-          fly.element.classList.remove('triggered');
-          fly.element.classList.add('triggered-out');
-          fly.element.style.removeProperty('--trigger-intensity');
-          // remove triggered-out and color after the ::after opacity transition (400ms)
-          setTimeout(() => {
-            fly.element.classList.remove('triggered-out');
-            fly.element.style.removeProperty('--trigger-color');
-          }, 400);
-        }, 800);
+        const id = fly.addTrigger(clickEvent.color, intensity);
+        setTimeout(() => fly.removeTrigger(id), 1200);
       }, delay);
     });
   }

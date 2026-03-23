@@ -5,6 +5,9 @@ interface SocketProps {
   clickHandler: (event: ClickEvent) => void;
 }
 
+/**
+ * Wraps the usage of a websocket used to send/receive click events to/from others
+ */
 export class Socket {
   private ws: WebSocket;
   onClickEvent: ((e: ClickEvent) => void) | null = null;
@@ -16,7 +19,6 @@ export class Socket {
         const data = JSON.parse(event.data) as ClickEvent;
         if (data.type === 'click') {
           clickHandler(data);
-          //this.onClickEvent(data);
         }
       } catch {
         // ignore malformed messages
@@ -28,9 +30,7 @@ export class Socket {
   }
 
   send(event: ClickEvent): void {
-    console.log('should send click?');
     if (this.ws.readyState === WebSocket.OPEN) {
-      console.log('yes');
       this.ws.send(JSON.stringify(event));
     }
   }
