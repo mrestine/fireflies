@@ -20,6 +20,7 @@ export const setupColorButtons = (
     toolbarEl?.appendChild(colorEl);
     return colorEl;
   });
+  colorButtons[0].classList.add('active');
 
   // create the click lister (depends on the button array)
   const onColorClick = (ev: PointerEvent) => {
