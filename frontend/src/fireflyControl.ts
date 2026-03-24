@@ -188,6 +188,7 @@ export class FireflyControl {
   /**
    * Gets all flies within a radius of a click event.
    * The distance is normalized by the screen's aspect ratio, so it always appears as a circle.
+   * The aspect ration is used against the x axis for landscape and y axis for portrait screens.
    * @param param0 x and y of the click event
    * @returns an array of flies and their distance from the event
    */
@@ -196,8 +197,8 @@ export class FireflyControl {
     const aspectRatio = window.innerWidth / window.innerHeight;
     this.fireflies.forEach((fly) => {
       const distance = Math.hypot(
-        (fly.positionX - x) * aspectRatio,
-        fly.positionY - y,
+        (fly.positionX - x) * (aspectRatio < 1 ? 1 : aspectRatio),
+        (fly.positionY - y) * (aspectRatio < 1 ? 1 / aspectRatio : 1),
       );
       if (distance < RIPPLE_RADIUS) {
         result.push({ fly, distance });
