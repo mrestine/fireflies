@@ -15,7 +15,8 @@ const control = new FireflyControl({
 });
 
 // websockets for feeding click events to other clients
-const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+const wsUrl = (import.meta.env.VITE_WS_URL as string | undefined)
+  ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 const socket = new Socket({
   url: wsUrl,
   clickHandler: control.triggerClick.bind(control),

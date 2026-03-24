@@ -32,8 +32,6 @@ func main() {
 	hub := newHub()
 	go hub.Run()
 
-	fs := http.FileServer(http.Dir("../frontend/dist"))
-	http.Handle("/", fs)
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})

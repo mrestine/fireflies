@@ -1,8 +1,7 @@
 @use 'variables' as *;
 
-#toolbar {
+.toolbar {
   position: fixed;
-  top: 16px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -12,6 +11,13 @@
   backdrop-filter: blur($toolbar-blur);
   padding: 8px 12px;
   border-radius: $toolbar-radius;
+}
+
+.toolbar.top {
+  top: 16px;
+}
+.toolbar.bottom {
+  bottom: 16px;
 }
 
 .color-btn {
@@ -29,7 +35,12 @@
   }
 }
 
-#width-slider {
-  width: 80px;
-  accent-color: white;
+#info {
+  font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+  font-size: 16px;
+  font-weight: 200;
+  color: #999999;
+  a {
+    color: #cccccc;
+  }
 }
